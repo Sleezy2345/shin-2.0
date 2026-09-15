@@ -39,8 +39,11 @@ def test_events_authenticates_and_normalizes():
             {
                 "eventID": "evt-1",
                 "leagueID": "MLB",
-                "teams": {"home": {"name": "Cardinals"}, "away": {"name": "Giants"}},
-                "startsAt": "2026-09-15T23:45:00Z",
+                "teams": {
+                    "home": {"names": {"long": "Cardinals"}},
+                    "away": {"names": {"long": "Giants"}},
+                },
+                "status": {"startsAt": "2026-09-15T23:45:00Z"},
             }
         ]
     }))

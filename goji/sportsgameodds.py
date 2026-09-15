@@ -44,9 +44,9 @@ class SportsGameOddsClient:
                 event_id = str(row["eventID"])
                 league = str(row.get("leagueID") or league_id)
                 teams = row["teams"]
-                home_team = str(teams["home"]["name"])
-                away_team = str(teams["away"]["name"])
-                starts_at = _parse_time(str(row["startsAt"]))
+                home_team = str(teams["home"]["names"]["long"])
+                away_team = str(teams["away"]["names"]["long"])
+                starts_at = _parse_time(str(row["status"]["startsAt"]))
             except (KeyError, TypeError, ValueError) as exc:
                 raise SportsGameOddsError("Malformed SportsGameOdds event record") from exc
 
