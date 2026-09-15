@@ -3,45 +3,24 @@ name: SportsGameOdds API Connectivity
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test-sportsgameodds:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out Shin
-        uses: actions/checkout@v4
-
+      - name: Check out Goji
+        uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          fi
-
+          pip install -r requirements.txt
       - name: Test SportsGameOdds connection
         env:
           SPORTSGAMEODDS_API_KEY: ${{ secrets.SPORTSGAMEODDS_API_KEY }}
-        run: |
-          python - <<'PY'
-          import os
-          from shin.sportsgameodds import SportsGameOddsClient
-
-          key = os.environ.get("SPORTSGAMEODDS_API_KEY")
-          if not key:
-              raise SystemExit("SPORTSGAMEODDS_API_KEY is not configured")
-
-          client = SportsGameOddsClient()
-          events = client.events(
-              league_id="MLB",
-              odds_available=True,
-              limit=5,
-          )
-
-          print(f"SportsGameOdds connection successful.")
-          print(f"Events received: {len(events)}")
-          PY
+        run: python scripts/goji_check.py --sgo
