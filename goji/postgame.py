@@ -4,85 +4,10 @@ from .genome import GenomeClient, GenomeError
 from .models import PostgameItem, PostgameRunReport, ResolvedOutcome, ScarsDiagnosis
 from .molt import Molt
 from .postgame_carapace import PostgameCarapace
+from .postgame_evaluation import _provider_event_id, _with_provider_event_id, evaluate_candidate
 from .scars import Scars, build_observed_evidence
 from .settlement import PlayerPropSettlementEvaluator, TeamSettlementEvaluator
 from .sportsgameodds import SportsGameOddsClient, SportsGameOddsError
-
-
-def _reason(reasons: tuple[str, ...]) -> str:
-    return "; ".join(reasons) or "postgame validation did not pass"
-
-
-def _provider_event_id(frozen: dict[str, Any]) -> str:
-    inputs = frozen.get("inputs") or {}
-    explicit = str(inputs.get("provider_event_id") or "").strip()
-    if explicit:
-        return explicit
-    for receipt in frozen.get("provenance") or []:
-        if not isinstance(receipt, dict):
-            continue
-        if str(receipt.get("provider") or "").casefold() == "sportsgameodds":
-            source_id = str(receipt.get("source_id") or "").strip()
-            if source_id:
-                return source_id
-    return ""
-
-
-def _with_provider_event_id(frozen: dict[str, Any]) -> dict[str, Any]:
-    resolved = dict(frozen)
-    event_id = _provider_event_id(resolved)
-    if event_id:
-        inputs = dict(resolved.get("inputs") or {})
-        inputs.setdefault("provider_event_id", event_id)
-        resolved["inputs"] = inputs
-    return resolved
-
-
-def _result_reference(result: ResolvedOutcome) -> dict[str, Any]:
-    return {
-        "provider_event_id": result.provider_event_id,
-        "sport": result.sport,
-        "finalized": result.finalized,
-        "home_team": result.home_team,
-        "away_team": result.away_team,
-        "home_score": result.home_score,
-        "away_score": result.away_score,
-        "observed_at": result.provenance.observed_at.isoformat(),
-        "provider": result.provenance.provider,
-        "source_id": result.provenance.source_id,
-    }
-
-
-def _settlement_payload(result: ResolvedOutcome, decision: Any) -> dict[str, Any]:
-    winner = None
-    if result.home_score is not None and result.away_score is not None and result.home_score != result.away_score:
-        winner = result.home_team if result.home_score > result.away_score else result.away_team
-    actual_state = {
-        "winner": winner,
-        "home_team": result.home_team,
-        "away_team": result.away_team,
-        "home_score": result.home_score,
-        "away_score": result.away_score,
-    }
-    if "score" in decision.grading_inputs:
-        actual_state["market_score"] = decision.grading_inputs["score"]
-    return {
-        "outcome": decision.outcome,
-        "provider_event_id": result.provider_event_id,
-        "sport": result.sport,
-        "finalized": result.finalized,
-        "grading_inputs": dict(decision.grading_inputs),
-        "evaluator_version": decision.evaluator_version,
-        "reason": decision.reason,
-        "actual_state": actual_state,
-        "provenance": [
-            {
-                "provider": result.provenance.provider,
-                "source_id": result.provenance.source_id,
-                "observed_at": result.provenance.observed_at.isoformat(),
-            }
-        ],
-    }
 
 
 def _diagnosis_from_postmortem(row: dict[str, Any]) -> ScarsDiagnosis:
@@ -128,7 +53,7 @@ class OperationalPostgame:
             raise ValueError("postgame mode must be AUDIT or LIVE")
 
         items: list[PostgameItem] = []
-        audit_diagnoses: list[tuple[ScarsDiagnosis, dict[str, Any]]] = []
+        audit_diagnoses: list[tuple[ScarsDiagnosis, dict[str, Any], Any]] = []
         settlement_queue = list(self.genome.review_queue(slate_id) or [])
         event_ids: list[str] = []
         for row in settlement_queue:
@@ -164,75 +89,47 @@ class OperationalPostgame:
                 items.append(PostgameItem(prediction_id, "SETTLEMENT", "UNRESOLVED", "matching provider result is unavailable", {}))
                 continue
 
-            state = self.carapace.evaluate(result, frozen)
-            if state.decision == "BLOCKED":
-                items.append(PostgameItem(prediction_id, "SETTLEMENT", "UNRESOLVED", _reason(state.reasons), {"result": _result_reference(result)}))
+            proposed, diagnosis, proposal = evaluate_candidate(
+                row, result, carapace=self.carapace, team_evaluator=self.team_evaluator,
+                prop_evaluator=self.prop_evaluator, scars=self.scars, molt=self.molt,
+            )
+            if proposed.status == "UNRESOLVED":
+                items.append(proposed)
                 continue
-            if state.decision == "REVIEW_REQUIRED":
-                review_payload = {"carapace_state": state.as_dict(), "result": _result_reference(result)}
+            if proposed.status == "REVIEW_REQUIRED":
                 if mode == "LIVE":
                     try:
-                        self.genome.mark_review_required(prediction_id, row.get("slate_id"), _reason(state.reasons), review_payload)
+                        self.genome.mark_review_required(prediction_id, row.get("slate_id"), proposed.reason, proposed.payload)
                     except GenomeError as exc:
-                        items.append(PostgameItem(prediction_id, "SETTLEMENT", "ERROR", str(exc), review_payload))
+                        items.append(PostgameItem(prediction_id, "SETTLEMENT", "ERROR", str(exc), proposed.payload))
                         continue
-                items.append(PostgameItem(prediction_id, "SETTLEMENT", "REVIEW_REQUIRED", _reason(state.reasons), review_payload))
+                items.append(proposed)
                 continue
 
-            if frozen.get("prediction_type") == "TEAM":
-                decision = self.team_evaluator.evaluate(frozen, result)
-            elif frozen.get("prediction_type") == "PLAYER_PROP":
-                decision = self.prop_evaluator.evaluate(frozen, result)
-            else:
-                decision = None
-
-            if decision is None or decision.outcome == "REVIEW_REQUIRED":
-                review_reason = decision.reason if decision is not None else "unsupported prediction type"
-                review_payload = {"result": _result_reference(result), "prediction_type": frozen.get("prediction_type")}
-                if mode == "LIVE":
-                    try:
-                        self.genome.mark_review_required(prediction_id, row.get("slate_id"), review_reason, review_payload)
-                    except GenomeError as exc:
-                        items.append(PostgameItem(prediction_id, "SETTLEMENT", "ERROR", str(exc), review_payload))
-                        continue
-                items.append(PostgameItem(prediction_id, "SETTLEMENT", "REVIEW_REQUIRED", review_reason, review_payload))
-                continue
-
-            payload = _settlement_payload(result, decision)
             if mode == "LIVE":
                 try:
                     self.genome.settle(
-                        f"settle:{prediction_id}",
-                        prediction_id,
-                        payload,
+                        f"settle:{prediction_id}", prediction_id, proposed.payload,
                         str(row.get("freeze_fingerprint") or ""),
                     )
                 except GenomeError as exc:
-                    items.append(PostgameItem(prediction_id, "SETTLEMENT", "ERROR", str(exc), payload))
+                    items.append(PostgameItem(prediction_id, "SETTLEMENT", "ERROR", str(exc), proposed.payload))
                     continue
-                status = "SETTLED"
+                items.append(PostgameItem(prediction_id, "SETTLEMENT", "SETTLED", proposed.reason, proposed.payload))
             else:
-                status = "PROPOSED_SETTLEMENT"
-                observed = build_observed_evidence(frozen, payload)
-                diagnosis = self.scars.diagnose(prediction_id, frozen, payload, observed)
-                audit_diagnoses.append((diagnosis, frozen))
-            items.append(PostgameItem(prediction_id, "SETTLEMENT", status, decision.reason, payload))
+                items.append(proposed)
+                if diagnosis is not None:
+                    audit_diagnoses.append((diagnosis, frozen, proposal))
 
         if mode == "AUDIT":
-            for diagnosis, frozen in audit_diagnoses:
+            for diagnosis, frozen, proposal in audit_diagnoses:
                 items.append(PostgameItem(
-                    diagnosis.prediction_id,
-                    "SCARS",
-                    "PROPOSED_POSTMORTEM",
-                    "audit diagnosis only; no canonical write",
-                    diagnosis.payload,
+                    diagnosis.prediction_id, "SCARS", "PROPOSED_POSTMORTEM",
+                    "audit diagnosis only; no canonical write", diagnosis.payload,
                 ))
-                proposal = self.molt.propose(diagnosis, frozen)
                 if proposal is not None:
                     items.append(PostgameItem(
-                        diagnosis.prediction_id,
-                        "MOLT",
-                        "PROPOSED_EVIDENCE",
+                        diagnosis.prediction_id, "MOLT", "PROPOSED_EVIDENCE",
                         "audit hypothesis/evidence only; no canonical write",
                         {"hypothesis": proposal.hypothesis_payload, "evidence": proposal.evidence_payload},
                     ))
@@ -268,10 +165,7 @@ class OperationalPostgame:
                     self.genome.record_experience_evidence(proposal.evidence_payload)
                 except GenomeError as exc:
                     items.append(PostgameItem(
-                        prediction_id,
-                        "MOLT",
-                        "ERROR",
-                        str(exc),
+                        prediction_id, "MOLT", "ERROR", str(exc),
                         {"hypothesis": proposal.hypothesis_payload, "evidence": proposal.evidence_payload},
                     ))
                     continue
@@ -279,9 +173,7 @@ class OperationalPostgame:
             else:
                 status = "PROPOSED_EVIDENCE"
             items.append(PostgameItem(
-                prediction_id,
-                "MOLT",
-                status,
+                prediction_id, "MOLT", status,
                 "MOLT proposal remains OBSERVED/SHADOW and requires human approval",
                 {"hypothesis": proposal.hypothesis_payload, "evidence": proposal.evidence_payload},
             ))
