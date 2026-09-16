@@ -13,6 +13,31 @@ def _reason(reasons: tuple[str, ...]) -> str:
     return "; ".join(reasons) or "postgame validation did not pass"
 
 
+def _provider_event_id(frozen: dict[str, Any]) -> str:
+    inputs = frozen.get("inputs") or {}
+    explicit = str(inputs.get("provider_event_id") or "").strip()
+    if explicit:
+        return explicit
+    for receipt in frozen.get("provenance") or []:
+        if not isinstance(receipt, dict):
+            continue
+        if str(receipt.get("provider") or "").casefold() == "sportsgameodds":
+            source_id = str(receipt.get("source_id") or "").strip()
+            if source_id:
+                return source_id
+    return ""
+
+
+def _with_provider_event_id(frozen: dict[str, Any]) -> dict[str, Any]:
+    resolved = dict(frozen)
+    event_id = _provider_event_id(resolved)
+    if event_id:
+        inputs = dict(resolved.get("inputs") or {})
+        inputs.setdefault("provider_event_id", event_id)
+        resolved["inputs"] = inputs
+    return resolved
+
+
 def _result_reference(result: ResolvedOutcome) -> dict[str, Any]:
     return {
         "provider_event_id": result.provider_event_id,
@@ -107,10 +132,10 @@ class OperationalPostgame:
         settlement_queue = list(self.genome.review_queue(slate_id) or [])
         event_ids: list[str] = []
         for row in settlement_queue:
-            frozen = row.get("payload") or {}
-            event_id = (frozen.get("inputs") or {}).get("provider_event_id")
-            if event_id and str(event_id) not in event_ids:
-                event_ids.append(str(event_id))
+            frozen = _with_provider_event_id(dict(row.get("payload") or {}))
+            event_id = _provider_event_id(frozen)
+            if event_id and event_id not in event_ids:
+                event_ids.append(event_id)
 
         results_by_id: dict[str, ResolvedOutcome] = {}
         if event_ids:
@@ -129,8 +154,8 @@ class OperationalPostgame:
 
         for row in settlement_queue:
             prediction_id = str(row.get("prediction_id") or "")
-            frozen = dict(row.get("payload") or {})
-            event_id = str((frozen.get("inputs") or {}).get("provider_event_id") or "")
+            frozen = _with_provider_event_id(dict(row.get("payload") or {}))
+            event_id = _provider_event_id(frozen)
             if not event_id:
                 items.append(PostgameItem(prediction_id, "SETTLEMENT", "UNRESOLVED", "provider event id is missing", {}))
                 continue
