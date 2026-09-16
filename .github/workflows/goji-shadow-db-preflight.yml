@@ -1,0 +1,22 @@
+name: Goji SHADOW database permission preflight
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/goji-shadow-db-preflight.yml'
+      - 'scripts/shadow_role_preflight.sh'
+      - 'tests/sql/**'
+      - 'tests/test_shadow_role_preflight.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-postgresql-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prove restricted login on disposable, network-isolated PostgreSQL
+        run: bash scripts/shadow_role_preflight.sh
