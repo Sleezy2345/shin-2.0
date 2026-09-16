@@ -31,6 +31,16 @@ def _serialize_provenance(candidate: PregameCandidate) -> list[dict[str, str]]:
     ]
 
 
+def _canonical_inputs(candidate: PregameCandidate) -> dict[str, Any]:
+    inputs = dict(candidate.inputs)
+    if not inputs.get("provider_event_id"):
+        for receipt in candidate.provenance:
+            if receipt.provider.casefold() == "sportsgameodds" and receipt.source_id:
+                inputs["provider_event_id"] = receipt.source_id
+                break
+    return inputs
+
+
 class OperationalPregame:
     def __init__(
         self,
@@ -94,6 +104,7 @@ class OperationalPregame:
                 {
                     "prediction_id": candidate.prediction_id,
                     "payload": {
+                        "record_kind": "PREDICTION",
                         "sport": candidate.sport,
                         "game_id": candidate.game_id,
                         "prediction_type": candidate.prediction_type,
@@ -105,7 +116,7 @@ class OperationalPregame:
                         "model_probability": decision.model_probability,
                         "market_implied_probability": decision.market_implied_probability,
                         "reason": decision.reason,
-                        "inputs": dict(candidate.inputs),
+                        "inputs": _canonical_inputs(candidate),
                         "features": dict(candidate.features),
                         "provenance": provenance,
                         "carapace_state": state.as_dict(),
