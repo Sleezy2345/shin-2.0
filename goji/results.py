@@ -10,6 +10,13 @@ def _number(value: Any) -> float | None:
     return float(value)
 
 
+def _canonical_sport(value: Any) -> str:
+    sport = str(value or "UNKNOWN").upper()
+    if sport in {"NCAAF", "NCAA_FOOTBALL"}:
+        return "CFB"
+    return sport
+
+
 def parse_sgo_result(row: dict[str, Any]) -> ResolvedOutcome:
     event_id = str(row["eventID"])
     teams = row["teams"]
@@ -28,7 +35,7 @@ def parse_sgo_result(row: dict[str, Any]) -> ResolvedOutcome:
 
     return ResolvedOutcome(
         provider_event_id=event_id,
-        sport=str(row.get("leagueID") or "UNKNOWN"),
+        sport=_canonical_sport(row.get("leagueID")),
         finalized=status.get("finalized") is True,
         home_team=str(teams["home"]["names"]["long"]),
         away_team=str(teams["away"]["names"]["long"]),
