@@ -92,6 +92,37 @@ def test_prepare_builds_canonical_prediction_and_does_not_write_genome():
     assert len(payload["provenance"]) == 1
 
 
+def test_prepare_stamps_prediction_record_kind_and_provider_event_id_from_sgo_provenance():
+    prepared = OperationalPregame().prepare("2026-09-16-MLB", [_team()], now=NOW)
+    payload = prepared.predictions[0]["payload"]
+
+    assert payload["record_kind"] == "PREDICTION"
+    assert payload["inputs"]["provider_event_id"] == "evt-1"
+    assert payload["inputs"]["home_team"] == "Cardinals"
+
+
+def test_explicit_provider_event_id_is_never_overwritten_by_provenance_fallback():
+    candidate = _team()
+    explicit_inputs = dict(candidate.inputs)
+    explicit_inputs["provider_event_id"] = "explicit-event"
+    candidate = PregameCandidate(
+        prediction_id=candidate.prediction_id,
+        sport=candidate.sport,
+        game_id=candidate.game_id,
+        prediction_type=candidate.prediction_type,
+        selection=candidate.selection,
+        market_key=candidate.market_key,
+        independent_group_key=candidate.independent_group_key,
+        inputs=explicit_inputs,
+        features=candidate.features,
+        provenance=candidate.provenance,
+        context=candidate.context,
+    )
+
+    payload = OperationalPregame().prepare("2026-09-16-MLB", [candidate], now=NOW).predictions[0]["payload"]
+    assert payload["inputs"]["provider_event_id"] == "explicit-event"
+
+
 def test_stale_candidate_is_blocked_and_never_becomes_prediction():
     prepared = OperationalPregame().prepare("2026-09-16-MLB", [_team(age_minutes=91)], now=NOW)
 
