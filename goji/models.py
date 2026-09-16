@@ -21,6 +21,28 @@ class NormalizedEvent:
 
 
 @dataclass(frozen=True)
+class MarketResult:
+    odd_id: str
+    score: float | None
+    scoring_supported: bool
+
+
+@dataclass(frozen=True)
+class ResolvedOutcome:
+    provider_event_id: str
+    sport: str
+    finalized: bool
+    home_team: str
+    away_team: str
+    home_score: float | None
+    away_score: float | None
+    market_results: dict[str, MarketResult]
+    players: dict[str, dict[str, Any]]
+    provenance: Provenance
+    raw_reference: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class PredictionInput:
     prediction_id: str
     sport: str
