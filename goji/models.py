@@ -51,6 +51,19 @@ class SettlementDecision:
 
 
 @dataclass(frozen=True)
+class ScarsDiagnosis:
+    memory_id: str
+    prediction_id: str
+    expectation_quality: str
+    reasoning_quality: str
+    outcome_informativeness: str
+    variance_class: str
+    learning_value: float
+    eligible_for_pattern_learning: bool
+    payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class PredictionInput:
     prediction_id: str
     sport: str
