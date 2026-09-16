@@ -40,6 +40,7 @@ class ResolvedOutcome:
     players: dict[str, dict[str, Any]]
     provenance: Provenance
     raw_reference: dict[str, Any]
+    starts_at: datetime | None = None
 
 
 @dataclass(frozen=True)
