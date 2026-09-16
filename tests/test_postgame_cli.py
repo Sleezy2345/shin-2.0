@@ -53,13 +53,15 @@ def test_cli_rejects_unknown_mode_before_runner_call():
     assert runner.calls == []
 
 
-def test_postgame_workflow_schedules_audit_and_exposes_manual_live_choice():
+def test_initial_postgame_workflow_cannot_schedule_or_dispatch_live():
     workflow = Path(".github/workflows/goji-postgame.yml").read_text()
-    assert "cron: '17 * * * *'" in workflow
+    assert "schedule:" not in workflow
     assert "workflow_dispatch:" in workflow
-    assert "- AUDIT" in workflow
-    assert "- LIVE" in workflow
+    assert "          - LIVE" not in workflow
+    assert "GOJI_POSTGAME_MODE: LIVE" not in workflow
     assert "GOJI_POSTGAME_MODE: AUDIT" in workflow
+    assert "GOJI_SHADOW_MODE" not in workflow
+    assert "manual-shadow:" not in workflow
     assert "SPORTSGAMEODDS_API_KEY" in workflow
     assert "SUPABASE_URL" in workflow
     assert "SUPABASE_SERVICE_ROLE_KEY" in workflow
