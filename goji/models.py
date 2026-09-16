@@ -64,6 +64,12 @@ class ScarsDiagnosis:
 
 
 @dataclass(frozen=True)
+class MoltProposal:
+    hypothesis_payload: dict[str, Any]
+    evidence_payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class PredictionInput:
     prediction_id: str
     sport: str
