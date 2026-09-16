@@ -93,7 +93,10 @@ as $$
              nullif(v.payload->>'model_probability','')::double precision),
     case when v.payload->>'roar_action' in ('ROAR','NO_ROAR') then v.payload->>'roar_action' else 'LEGACY' end,
     coalesce(nullif(v.payload->>'independent_group_key',''),v.prediction_id),
-    to_timestamp((v.payload->>'game_start_at')::double precision),
+    case
+      when v.payload->>'game_start_at' is null then null
+      else to_timestamp((v.payload->>'game_start_at')::double precision)
+    end,
     v.freeze_fingerprint,
     to_timestamp(v.logged_at),
     v.payload->>'game_id',
@@ -103,10 +106,11 @@ as $$
   left join public.genome_postgame_reviews r on r.prediction_id=v.prediction_id
   where s.prediction_id is null
     and r.prediction_id is null
-    and v.payload->>'record_kind'='PREDICTION'
-    and (v.payload->>'game_start_at')::double precision <= extract(epoch from clock_timestamp())
+    and (v.payload->>'record_kind'='PREDICTION' or v.payload->>'capture_mode'='FULL_SLATE')
+    and (v.payload->>'game_start_at' is null
+         or (v.payload->>'game_start_at')::double precision <= extract(epoch from clock_timestamp()))
     and (p_slate_id is null or v.payload->>'slate_id'=p_slate_id)
-  order by (v.payload->>'game_start_at')::double precision, v.prediction_id;
+  order by coalesce((v.payload->>'game_start_at')::double precision,v.logged_at), v.prediction_id;
 $$;
 
 create or replace function public.genome_postmortem_queue(p_slate_id text default null)
@@ -130,7 +134,7 @@ as $$
   join public.shin2_settlements s on s.prediction_id=v.prediction_id
   left join public.prediction_postmortems p on p.prediction_id=v.prediction_id
   where p.prediction_id is null
-    and v.payload->>'record_kind'='PREDICTION'
+    and (v.payload->>'record_kind'='PREDICTION' or v.payload->>'capture_mode'='FULL_SLATE')
     and (p_slate_id is null or v.payload->>'slate_id'=p_slate_id)
   order by v.prediction_id;
 $$;
