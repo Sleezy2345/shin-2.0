@@ -43,6 +43,14 @@ class ResolvedOutcome:
 
 
 @dataclass(frozen=True)
+class SettlementDecision:
+    outcome: str
+    reason: str
+    grading_inputs: dict[str, Any]
+    evaluator_version: str
+
+
+@dataclass(frozen=True)
 class PredictionInput:
     prediction_id: str
     sport: str
