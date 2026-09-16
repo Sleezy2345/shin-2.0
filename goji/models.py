@@ -70,6 +70,22 @@ class MoltProposal:
 
 
 @dataclass(frozen=True)
+class PostgameItem:
+    prediction_id: str
+    phase: str
+    status: str
+    reason: str
+    payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class PostgameRunReport:
+    slate_id: str | None
+    mode: str
+    items: tuple[PostgameItem, ...]
+
+
+@dataclass(frozen=True)
 class PredictionInput:
     prediction_id: str
     sport: str
