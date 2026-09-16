@@ -53,13 +53,14 @@ class PlayerPropSettlementEvaluator:
     def evaluate(self, frozen: dict[str, Any], result: ResolvedOutcome) -> SettlementDecision:
         inputs = frozen.get("inputs") or {}
         line = inputs.get("line")
-        side = str(inputs.get("side") or "").upper()
+        raw_side = str(inputs.get("side") or "").upper()
+        side = {"HIGHER": "OVER", "LOWER": "UNDER"}.get(raw_side, raw_side)
         odd_id = inputs.get("provider_odd_id")
 
         if isinstance(line, bool) or not isinstance(line, (int, float)):
             return SettlementDecision("REVIEW_REQUIRED", "prop line is missing or invalid", {}, self.version)
         if side not in {"OVER", "UNDER"}:
-            return SettlementDecision("REVIEW_REQUIRED", "prop side must be OVER or UNDER", {}, self.version)
+            return SettlementDecision("REVIEW_REQUIRED", "prop side must be OVER/UNDER or HIGHER/LOWER", {}, self.version)
         if not odd_id:
             return SettlementDecision("REVIEW_REQUIRED", "provider odd id is missing", {}, self.version)
 
