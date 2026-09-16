@@ -39,3 +39,34 @@ class PredictionDecision:
     model_status: str
     roar_action: str
     reason: str
+
+
+@dataclass(frozen=True)
+class PregameCandidate:
+    prediction_id: str
+    sport: str
+    game_id: str
+    prediction_type: str
+    selection: str
+    market_key: str
+    independent_group_key: str
+    inputs: dict[str, Any]
+    features: dict[str, Any]
+    provenance: tuple[Provenance, ...]
+    context: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ValidationState:
+    decision: str
+    reasons: tuple[str, ...] = ()
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"decision": self.decision, "reasons": list(self.reasons)}
+
+
+@dataclass(frozen=True)
+class PreparedSlate:
+    slate_id: str
+    predictions: tuple[dict[str, Any], ...]
+    blocked: tuple[dict[str, Any], ...]
