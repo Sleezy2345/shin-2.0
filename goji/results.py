@@ -17,6 +17,16 @@ def _canonical_sport(value: Any) -> str:
     return sport
 
 
+def _provider_start(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.astimezone(timezone.utc) if parsed.tzinfo else None
+    except ValueError:
+        return None
+
+
 def parse_sgo_result(row: dict[str, Any]) -> ResolvedOutcome:
     event_id = str(row["eventID"])
     teams = row["teams"]
@@ -49,4 +59,5 @@ def parse_sgo_result(row: dict[str, Any]) -> ResolvedOutcome:
             "scores": {"home": scores.get("home"), "away": scores.get("away")},
             "market_ids": sorted(market_results),
         },
+        starts_at=_provider_start(status.get("startsAt")),
     )
