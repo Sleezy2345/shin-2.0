@@ -23,3 +23,15 @@ jobs:
         run: python scripts/goji_check.py
       - name: Run tests
         run: python -m pytest -v
+      - name: Live GENOME read-only smoke
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python - <<'PY'
+          from goji.genome import GenomeClient
+
+          scoreboards = GenomeClient().scoreboards()
+          review_queue = GenomeClient().review_queue()
+          print(f"GENOME connection successful. Scoreboard rows: {len(scoreboards)}; review queue rows: {len(review_queue)}")
+          PY
