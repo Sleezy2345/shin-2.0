@@ -14,8 +14,8 @@ Goji v0.3 preserves the v0.2 pregame foundation and adds guarded postgame intell
 - postgame CARAPACE validation that distinguishes final from actually settleable
 - sport-agnostic settlement orchestration with separate team and player-prop evaluators
 - exact SportsGameOdds market-score grading for supported player props; missing/unsupported scoring never becomes zero
-- AUDIT and LIVE postgame modes, with AUDIT as the safe default
-- retry-safe settlement, SCARS, and MOLT phases backed by canonical GENOME queues/RPCs
+- manual `AUDIT` and isolated `SHADOW` release modes; CLI/workflow `LIVE` is intentionally unavailable
+- retry-safe settlement, SCARS, and MOLT phases backed by canonical GENOME queues/RPCs for the separately gated canonical path
 - SCARS expectation-error diagnosis that keeps outcome correctness separate from reasoning quality
 - MOLT candidate hypotheses that remain OBSERVED / SHADOW and require human approval
 - Evidence Maturity data remains multi-dimensional rather than one opaque score
@@ -37,19 +37,18 @@ Default pregame CARAPACE freshness policy is caution after 30 minutes, block aft
 
 ## Postgame flow
 
-The v0.3 postgame path is:
+The v0.3 postgame evaluation path is:
 
 ```text
-GENOME unresolved queue
+GENOME frozen queue
   -> ECHOSENSE / SportsGameOdds finalized result adapter
   -> postgame CARAPACE
   -> ResolvedOutcome
   -> TEAM or PLAYER_PROP settlement evaluator
-  -> AUDIT proposal or canonical GENOME settlement
-  -> GENOME experience event
+  -> AUDIT proposal or isolated SHADOW observation
   -> SCARS diagnosis
-  -> MOLT candidate/evidence
-  -> Evidence Maturity
+  -> MOLT proposal
+  -> Evidence Maturity gates
 ```
 
 The postgame contract is sport-agnostic. MLB and CFB are the first live-validation targets; NFL and later sports should use the same contract after their result/stat fixtures pass the same safety gates.
@@ -58,13 +57,15 @@ The postgame contract is sport-agnostic. MLB and CFB are the first live-validati
 
 A result must be finalized and match the frozen prediction identity. Team grading requires verified final scores. Player props require the exact frozen provider market identifier plus a supported final market score. Missing, conflicting, unsupported, or ambiguous evidence remains unresolved or becomes `REVIEW_REQUIRED`; Goji does not guess.
 
-### AUDIT versus LIVE
+### AUDIT and SHADOW
 
-`AUDIT` executes the postgame decisions in memory and performs zero settlement, postmortem, hypothesis, or evidence writes. It is the default CLI and scheduled-workflow mode.
+`AUDIT` executes postgame decisions in memory and performs zero settlement, postmortem, hypothesis, evidence, or SHADOW writes. It is the default CLI mode.
 
-`LIVE` uses the same validation and grading decisions but may write through canonical GENOME RPCs. LIVE is a release gate, not the default: the database migration must be applied and a completed real slate must match manual reality in AUDIT before LIVE should be enabled.
+`SHADOW` uses the same frozen-evidence contract and evaluator, but writes only through the dedicated restricted `goji_shadow_writer` PostgreSQL login to the isolated append-only SHADOW boundary. It does not call canonical settlement, training, official scoreboard, or promotion writers. SHADOW defaults off and requires an independent TLS-verified database connection.
 
-Run the postgame worker manually:
+`LIVE` canonical postgame settlement remains a separate future release gate and is deliberately unavailable from the initial v0.3 CLI and GitHub workflow.
+
+Run zero-write AUDIT manually:
 
 ```bash
 GOJI_POSTGAME_MODE=AUDIT python scripts/goji_postgame.py
@@ -76,7 +77,19 @@ Optionally scope it to one canonical slate:
 GOJI_POSTGAME_MODE=AUDIT GOJI_SLATE_ID=slate-id python scripts/goji_postgame.py
 ```
 
-The GitHub Actions postgame workflow runs hourly at minute 17 in AUDIT mode. Manual dispatch exposes AUDIT or LIVE, but LIVE should not be used until the v0.3 release gates are satisfied.
+The GitHub Actions postgame workflow is manual only. Dispatch exposes `AUDIT` or `SHADOW`; there is no cron schedule and no `LIVE` option.
+
+### Restricted SHADOW runtime
+
+SHADOW requires all of the following:
+
+- `GOJI_SHADOW_ENABLED=true`
+- `GOJI_SHADOW_DATABASE_URL` for the exact `goji_shadow_writer` login
+- `sslmode=verify-full` in that URI
+- an absolute `sslrootcert` path in that URI
+- `SPORTSGAMEODDS_API_KEY`
+
+The GitHub SHADOW job accepts the database CA certificate separately as `GOJI_SHADOW_CA_CERT` and materializes it at `/tmp/goji-supabase-ca.crt`; the database URL must reference that absolute path. The SHADOW runtime never falls back to `SUPABASE_SERVICE_ROLE_KEY`.
 
 ## Learning safety
 
@@ -84,19 +97,22 @@ Settlement answers **what happened**. SCARS asks **what it meant**. MOLT asks wh
 
 SCARS only scores expectation quality where frozen expectations can be compared with observed evidence. A win is not automatically good reasoning, and a loss is not automatically a model miss. Data issues and unexpected events receive low learning value and are not treated as clean pattern evidence.
 
-MOLT does not alter REACTOR, SPINES, THERMAL, ROAR, calibration, or any other production behavior. It can create an OBSERVED/SHADOW hypothesis and attach evidence. Promotion remains outside this runner and continues to require Evidence Maturity, RIVAL/ARENA/FOSSIL review, and human approval.
+MOLT does not alter REACTOR, SPINES, THERMAL, ROAR, calibration, or any other production behavior. It can propose OBSERVED/SHADOW evidence only. Promotion remains outside this runner and continues to require Evidence Maturity, RIVAL/ARENA/FOSSIL review, and human approval.
 
 ## GENOME boundary
 
-GitHub code does not duplicate GENOME. Persistent prediction and learning state stay in canonical Supabase structures. v0.3 ships `supabase/migrations/2026091601_postgame_intelligence.sql` to add the minimal postgame review registry and retry-safe RPC queues required by the runner while preserving the existing settlement, experience-event, postmortem, hypothesis, and evidence stores.
+GitHub code does not duplicate GENOME. Persistent prediction and learning state stay in canonical Supabase structures. v0.3 stages `supabase/migrations/2026091601_postgame_intelligence.sql` plus `supabase/migrations/2026091602_shadow_experience.sql`. The second migration creates the restricted SHADOW roles, RLS boundary, append-only observation table, and three allowlisted SHADOW functions.
 
-The migration must be reviewed/applied separately. Merely having the migration file in the repository does not mean production GENOME has been changed.
+Both migrations have a disposable PostgreSQL rehearsal in CI, including restricted-login permission denials, replay/idempotency, correction revision behavior, TLS hostname verification, and canonical-state immutability against fixtures. This is **not** proof of the Supabase-hosted environment.
+
+Production migrations, credentials, initial controlled SHADOW writes, merge, recurring execution, LIVE mode, and model/maturity promotion require separate approval.
 
 ## Requirements
 
 - Python 3.11
 - `SPORTSGAMEODDS_API_KEY` for SportsGameOdds access
-- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for GENOME RPC access
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` only for canonical AUDIT/GENOME read paths that already require them
+- `psycopg[binary]==3.3.5` for the dedicated SHADOW PostgreSQL client
 
 Never commit credentials. Configure them through the environment or GitHub Actions secrets.
 
@@ -116,4 +132,4 @@ SPORTSGAMEODDS_API_KEY=... python scripts/goji_check.py --sgo
 
 ## Still ahead
 
-Goji v0.3 does **not** claim to have a trained REACTOR model. Automatic construction of complete prediction candidates from live team/prop feeds is still ahead, as are full autonomous pregame slate generation, broader sport/market adapters, production LIVE-postgame graduation, bankroll sizing, and evidence-backed model changes promoted through the maturity process.
+Goji v0.3 does **not** claim to have a trained REACTOR model. Before merge/deployment, the staged restricted migration/client must still be proven against an explicitly approved isolated Supabase-hosted environment and a genuine completed TEAM + PLAYER_PROP slate must match independent ground truth. Production deployment, recurring SHADOW, LIVE settlement, bankroll sizing, autonomous pregame slate generation, and evidence-backed model changes remain separately gated.
