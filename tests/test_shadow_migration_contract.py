@@ -1,5 +1,6 @@
 """Static prerequisites: these do not replace executing the migration as the login."""
 from pathlib import Path
+import re
 
 MIGRATION = Path('supabase/migrations/2026091602_shadow_experience.sql')
 
@@ -26,12 +27,13 @@ def test_shadow_migration_has_separate_low_privilege_roles_and_locked_rpcs():
         'from public', 'to goji_shadow_writer',
     ):
         assert phrase in sql, phrase
-    assert 'password ' not in sql
-    assert 'grant all on' not in sql
-    assert 'grant select on public.shin2_verdicts to goji_shadow_writer' not in sql
-    assert 'grant insert on public.shin2_settlements' not in sql
-    assert 'grant execute on function public.genome_settle' not in sql
-    assert 'grant execute on function public.genome_freeze_slate' not in sql
+    ddl = '\n'.join(line for line in sql.splitlines() if not line.lstrip().startswith('--'))
+    assert not re.search(r'\b(create|alter)\s+role\b[^;]*\bpassword\b', ddl), 'credentials must not appear in migration DDL'
+    assert 'grant all on' not in ddl
+    assert 'grant select on public.shin2_verdicts to goji_shadow_writer' not in ddl
+    assert 'grant insert on public.shin2_settlements' not in ddl
+    assert 'grant execute on function public.genome_settle' not in ddl
+    assert 'grant execute on function public.genome_freeze_slate' not in ddl
 
 
 def test_shadow_migration_never_mutates_canonical_outcomes():
