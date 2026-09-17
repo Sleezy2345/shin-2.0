@@ -70,3 +70,55 @@ def test_timeout_is_wrapped_without_secret_leak():
         client.events("MLB")
 
     assert "do-not-leak" not in str(exc.value)
+
+
+def test_finalized_events_queries_exact_ids_and_normalizes():
+    session = FakeSession(FakeResponse({
+        "data": [{
+            "eventID": "evt-1",
+            "leagueID": "MLB",
+            "teams": {
+                "home": {"names": {"long": "Cardinals"}},
+                "away": {"names": {"long": "Giants"}},
+            },
+            "status": {"finalized": True},
+            "scores": {"home": 5, "away": 3},
+            "odds": {"prop-1": {"oddID": "prop-1", "score": 2, "scoringSupported": True}},
+            "players": {"player-1": {"name": "John Doe"}},
+        }]
+    }))
+    client = SportsGameOddsClient(
+        SportsGameOddsConfig(api_key="secret", base_url="https://example.test/v2", timeout_seconds=3),
+        session=session,
+    )
+
+    rows = client.finalized_events(["evt-1"])
+
+    assert session.last_request["params"] == {"eventIDs": "evt-1"}
+    assert rows[0].finalized is True
+    assert rows[0].home_score == 5.0
+    assert rows[0].market_results["prop-1"].score == 2.0
+
+
+def test_finalized_events_preserves_non_final_status_for_carapace():
+    session = FakeSession(FakeResponse({
+        "data": [{
+            "eventID": "evt-2",
+            "leagueID": "CFB",
+            "teams": {
+                "home": {"names": {"long": "Home"}},
+                "away": {"names": {"long": "Away"}},
+            },
+            "status": {"finalized": False},
+            "scores": {"home": 21, "away": 17},
+        }]
+    }))
+    client = SportsGameOddsClient(
+        SportsGameOddsConfig(api_key="secret", base_url="https://example.test/v2", timeout_seconds=3),
+        session=session,
+    )
+
+    rows = client.finalized_events(["evt-2"])
+
+    assert len(rows) == 1
+    assert rows[0].finalized is False

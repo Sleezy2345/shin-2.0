@@ -40,6 +40,46 @@ class GenomeClient:
     def review_queue(self, slate_id: str | None = None) -> Any:
         return self._rpc("genome_review_queue", {"p_slate_id": slate_id})
 
+    def settle(self, settlement_id: str, prediction_id: str, payload: dict, freeze_fingerprint: str) -> Any:
+        return self._rpc(
+            "genome_settle",
+            {
+                "p_settlement_id": settlement_id,
+                "p_prediction_id": prediction_id,
+                "p_payload": payload,
+                "p_freeze_fingerprint": freeze_fingerprint,
+            },
+        )
+
+    def mark_review_required(self, prediction_id: str, slate_id: str | None, reason: str, payload: dict) -> Any:
+        return self._rpc(
+            "genome_mark_review_required",
+            {
+                "p_prediction_id": prediction_id,
+                "p_slate_id": slate_id,
+                "p_reason": reason,
+                "p_payload": payload,
+            },
+        )
+
+    def postmortem_queue(self, slate_id: str | None = None) -> Any:
+        return self._rpc("genome_postmortem_queue", {"p_slate_id": slate_id})
+
+    def molt_queue(self, slate_id: str | None = None) -> Any:
+        return self._rpc("genome_molt_queue", {"p_slate_id": slate_id})
+
+    def record_postmortem(self, memory_id: str, prediction_id: str, payload: dict) -> Any:
+        return self._rpc(
+            "genome_record_postmortem",
+            {"p_memory_id": memory_id, "p_prediction_id": prediction_id, "p_payload": payload},
+        )
+
+    def register_hypothesis(self, payload: dict) -> Any:
+        return self._rpc("genome_register_experience_hypothesis", {"p_payload": payload})
+
+    def record_experience_evidence(self, payload: dict) -> Any:
+        return self._rpc("genome_record_experience_evidence", payload)
+
     def scoreboards(self, sport: str | None = None) -> Any:
         return self._rpc("genome_scoreboards", {"p_sport": sport})
 

@@ -1,0 +1,27 @@
+name: Goji SHADOW database permission preflight
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/goji-shadow-db-preflight.yml'
+      - 'scripts/shadow_role_preflight.sh'
+      - 'scripts/shadow_migration_rehearsal.sh'
+      - 'supabase/migrations/**'
+      - 'tests/sql/**'
+      - 'tests/test_shadow_role_preflight.py'
+      - 'tests/test_shadow_migration_rehearsal.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-postgresql-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prove restricted login and TLS on disposable PostgreSQL
+        run: bash scripts/shadow_role_preflight.sh
+      - name: Rehearse actual dependency-ordered migrations and SHADOW permission boundary
+        run: bash scripts/shadow_migration_rehearsal.sh

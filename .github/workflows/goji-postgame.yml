@@ -1,0 +1,66 @@
+name: Goji Postgame
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Postgame execution mode
+        required: true
+        default: AUDIT
+        type: choice
+        options:
+          - AUDIT
+          - SHADOW
+      slate_id:
+        description: Optional GENOME slate id
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  manual-audit:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'AUDIT'
+    runs-on: ubuntu-latest
+    env:
+      SPORTSGAMEODDS_API_KEY: ${{ secrets.SPORTSGAMEODDS_API_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      GOJI_POSTGAME_MODE: AUDIT
+      GOJI_SLATE_ID: ${{ inputs.slate_id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run postgame audit
+        run: python scripts/goji_postgame.py
+
+  manual-shadow:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'SHADOW'
+    runs-on: ubuntu-latest
+    env:
+      SPORTSGAMEODDS_API_KEY: ${{ secrets.SPORTSGAMEODDS_API_KEY }}
+      GOJI_POSTGAME_MODE: SHADOW
+      GOJI_SHADOW_ENABLED: "true"
+      GOJI_SHADOW_DATABASE_URL: ${{ secrets.GOJI_SHADOW_DATABASE_URL }}
+      GOJI_SHADOW_CA_CERT: ${{ secrets.GOJI_SHADOW_CA_CERT }}
+      GOJI_SLATE_ID: ${{ inputs.slate_id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Materialize database CA certificate
+        shell: bash
+        run: |
+          test -n "$GOJI_SHADOW_CA_CERT"
+          printf '%s' "$GOJI_SHADOW_CA_CERT" > /tmp/goji-supabase-ca.crt
+          chmod 600 /tmp/goji-supabase-ca.crt
+      - name: Run isolated postgame shadow
+        run: python scripts/goji_postgame.py

@@ -4,7 +4,8 @@ from typing import Any
 import requests
 
 from .config import SportsGameOddsConfig
-from .models import NormalizedEvent, Provenance
+from .models import NormalizedEvent, Provenance, ResolvedOutcome
+from .results import parse_sgo_result
 
 
 class SportsGameOddsError(RuntimeError):
@@ -65,3 +66,26 @@ class SportsGameOddsClient:
                 )
             )
         return normalized
+
+    def finalized_events(self, event_ids: list[str]) -> list[ResolvedOutcome]:
+        if not event_ids:
+            return []
+        try:
+            response = self.session.get(
+                f"{self.config.base_url.rstrip('/')}/events/",
+                headers={"x-api-key": self.config.api_key},
+                params={"eventIDs": ",".join(event_ids)},
+                timeout=self.config.timeout_seconds,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (requests.RequestException, ValueError) as exc:
+            raise SportsGameOddsError(f"SportsGameOdds finalized events request failed: {type(exc).__name__}") from exc
+
+        rows = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(rows, list):
+            raise SportsGameOddsError("SportsGameOdds finalized events response missing data list")
+        try:
+            return [parse_sgo_result(row) for row in rows]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise SportsGameOddsError("Malformed SportsGameOdds finalized event record") from exc

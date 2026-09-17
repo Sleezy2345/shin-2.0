@@ -21,6 +21,72 @@ class NormalizedEvent:
 
 
 @dataclass(frozen=True)
+class MarketResult:
+    odd_id: str
+    score: float | None
+    scoring_supported: bool
+
+
+@dataclass(frozen=True)
+class ResolvedOutcome:
+    provider_event_id: str
+    sport: str
+    finalized: bool
+    home_team: str
+    away_team: str
+    home_score: float | None
+    away_score: float | None
+    market_results: dict[str, MarketResult]
+    players: dict[str, dict[str, Any]]
+    provenance: Provenance
+    raw_reference: dict[str, Any]
+    starts_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class SettlementDecision:
+    outcome: str
+    reason: str
+    grading_inputs: dict[str, Any]
+    evaluator_version: str
+
+
+@dataclass(frozen=True)
+class ScarsDiagnosis:
+    memory_id: str
+    prediction_id: str
+    expectation_quality: str
+    reasoning_quality: str
+    outcome_informativeness: str
+    variance_class: str
+    learning_value: float
+    eligible_for_pattern_learning: bool
+    payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class MoltProposal:
+    hypothesis_payload: dict[str, Any]
+    evidence_payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class PostgameItem:
+    prediction_id: str
+    phase: str
+    status: str
+    reason: str
+    payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class PostgameRunReport:
+    slate_id: str | None
+    mode: str
+    items: tuple[PostgameItem, ...]
+
+
+@dataclass(frozen=True)
 class PredictionInput:
     prediction_id: str
     sport: str
