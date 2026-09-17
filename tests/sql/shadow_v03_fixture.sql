@@ -1,9 +1,13 @@
 -- Test-only minimal baseline derived from read-only GENOME catalog inspection.
--- Never apply to a Supabase project; it intentionally replaces none of its actual schema.
+-- Never apply to a Supabase project; this is a disposable fixture only.
 \set ON_ERROR_STOP on
 CREATE ROLE anon NOLOGIN;
 CREATE ROLE authenticated NOLOGIN;
 CREATE ROLE service_role NOLOGIN BYPASSRLS;
+CREATE ROLE goji_migrator NOLOGIN NOSUPERUSER CREATEROLE BYPASSRLS;
+ALTER DATABASE postgres OWNER TO goji_migrator;
+GRANT USAGE, CREATE ON SCHEMA public TO goji_migrator;
+SET ROLE goji_migrator;
 CREATE TABLE public.shin2_verdicts (
  prediction_id text PRIMARY KEY, payload jsonb NOT NULL,
  freeze_fingerprint text NOT NULL, logged_at double precision NOT NULL
@@ -62,5 +66,4 @@ INSERT INTO public.shin2_verdicts(prediction_id,payload,freeze_fingerprint,logge
  ('team-eligible','{"record_kind":"PREDICTION","capture_mode":"FULL_SLATE","slate_id":"shadow-fixture","sport":"MLB","game_id":"MLB-fixture","prediction_type":"TEAM","selection":"Home","game_start_at":1780000000,"inputs":{"provider_event_id":"event-1","home_team":"Home","away_team":"Away"}}','fp-team',1779999000),
  ('prop-eligible','{"record_kind":"PREDICTION","capture_mode":"FULL_SLATE","slate_id":"shadow-fixture","sport":"MLB","game_id":"MLB-fixture","prediction_type":"PLAYER_PROP","selection":"Player Over 1.5","game_start_at":1780000000,"inputs":{"provider_event_id":"event-1","player":"Player","market":"hits","provider_odd_id":"odd-1","line":1.5,"side":"OVER"}}','fp-prop',1779999000),
  ('test-ineligible','{"record_kind":"TEST","slate_id":"shadow-fixture","sport":"MLB","prediction_type":"TEAM","selection":"Away","game_start_at":1780000000,"inputs":{"provider_event_id":"event-1"}}','fp-test',1779999000);
--- Supabase's actual postgres project role is not superuser. Match that limitation.
-ALTER ROLE postgres NOSUPERUSER CREATEROLE BYPASSRLS;
+RESET ROLE;
