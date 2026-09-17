@@ -28,10 +28,11 @@ admin_psql() {
   docker exec -i -e "PGPASSWORD=$admin_password" "$container" \
     psql -X -v ON_ERROR_STOP=1 -h 127.0.0.1 -U postgres -d postgres "$@"
 }
-# The fixture models inspected live columns, constraints and Supabase's non-super postgres role.
+# Fixture tables belong to a disposable NO-SUPERUSER CREATEROLE role.
 admin_psql < tests/sql/shadow_v03_fixture.sql
-admin_psql < supabase/migrations/2026091601_postgame_intelligence.sql
-admin_psql < supabase/migrations/2026091602_shadow_experience.sql
+# Execute each real SQL file with current_user = non-superuser migrator, not postgres.
+{ printf 'SET ROLE goji_migrator;\n'; cat supabase/migrations/2026091601_postgame_intelligence.sql; } | admin_psql
+{ printf 'SET ROLE goji_migrator;\n'; cat supabase/migrations/2026091602_shadow_experience.sql; } | admin_psql
 # Short-lived disposable credential, never in the migration or repository.
 admin_psql -v "shadow_password=$shadow_password" <<'SQL'
 ALTER ROLE goji_shadow_writer PASSWORD :'shadow_password';
