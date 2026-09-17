@@ -1,5 +1,5 @@
 -- GOJI v0.3 SHADOW: REVIEW/STAGING ONLY. DO NOT APPLY TO PRODUCTION WITHOUT APPROVAL.
--- Depends on 2026091601_postgame_intelligence.sql; provision the login password separately.
+-- Depends on 2026091601_postgame_intelligence.sql; provision login credentials separately.
 BEGIN;
 DO $$ BEGIN
   IF to_regclass('public.genome_postgame_reviews') IS NULL OR
@@ -13,8 +13,13 @@ END $$;
 
 CREATE ROLE goji_shadow_writer LOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
 CREATE ROLE goji_shadow_gateway NOLOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
--- No memberships, login secret, administrative privilege, or broad canonical table grants.
-GRANT USAGE ON SCHEMA public TO goji_shadow_writer, goji_shadow_gateway;
+-- PostgreSQL 17 requires SET ROLE membership and target CREATE on schema to transfer
+-- function ownership as a non-superuser. Both are transaction-scoped then revoked.
+DO $$ BEGIN
+  EXECUTE pg_catalog.format('GRANT goji_shadow_gateway TO %I WITH SET TRUE', current_user);
+END $$;
+GRANT USAGE, CREATE ON SCHEMA public TO goji_shadow_gateway;
+GRANT USAGE ON SCHEMA public TO goji_shadow_writer;
 GRANT SELECT ON public.shin2_verdicts TO goji_shadow_gateway;
 -- Canonical RLS remains enabled; only the non-bypass gateway can see genuine pregame rows.
 CREATE POLICY goji_shadow_frozen_read ON public.shin2_verdicts
@@ -58,7 +63,7 @@ REVOKE ALL ON FUNCTION public.genome_shadow_deny_mutation() FROM PUBLIC, anon, a
 CREATE TRIGGER genome_shadow_deny_mutation BEFORE UPDATE OR DELETE ON public.genome_shadow_observations
 FOR EACH ROW EXECUTE FUNCTION public.genome_shadow_deny_mutation();
 
--- SECURITY DEFINER owners are dedicated non-bypass roles; revoke PUBLIC's default EXECUTE.
+-- SECURITY DEFINER ownership is transferred to a dedicated non-bypass role.
 CREATE FUNCTION public.genome_shadow_ready() RETURNS jsonb LANGUAGE sql STABLE
 SECURITY DEFINER SET search_path = '' AS $$
   SELECT pg_catalog.jsonb_build_object('schema','SHADOW/0.3','ready',true);
@@ -117,14 +122,15 @@ BEGIN
   IF v_version IS NULL OR jsonb_typeof(v_result)<>'object' OR
      jsonb_typeof(v_grade)<>'object' OR
      p_payload->'carapace'->>'decision' IS DISTINCT FROM 'PASS' OR
-     p_payload->>'adapter_version' IS NULL OR
+     nullif(p_payload->>'adapter_version','') IS NULL OR
      v_result->>'provider' IS DISTINCT FROM 'sportsgameodds' OR
      v_result->>'source_id' IS DISTINCT FROM v_verdict.payload->'inputs'->>'provider_event_id' OR
      v_result->>'provider_event_id' IS DISTINCT FROM v_verdict.payload->'inputs'->>'provider_event_id' OR
      v_result->>'sport' IS DISTINCT FROM v_verdict.payload->>'sport' OR
      v_result->>'finalized' IS DISTINCT FROM 'true' OR
-     v_result->>'observed_at' IS NULL OR
+     nullif(v_result->>'observed_at','') IS NULL OR
      v_grade->>'status' IS DISTINCT FROM 'PROPOSED_SETTLEMENT' OR
+     v_grade->>'outcome' IS NULL OR
      v_grade->>'outcome' NOT IN ('WIN','LOSS','PUSH','VOID') THEN
     RAISE EXCEPTION 'missing verified SHADOW evidence';
   END IF;
@@ -151,4 +157,9 @@ END $$;
 ALTER FUNCTION public.genome_shadow_record(text,jsonb) OWNER TO goji_shadow_gateway;
 REVOKE ALL ON FUNCTION public.genome_shadow_record(text,jsonb) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.genome_shadow_record(text,jsonb) TO goji_shadow_writer;
+-- Remove ownership-transfer privileges before committing: gateway has no schema CREATE.
+REVOKE CREATE ON SCHEMA public FROM goji_shadow_gateway;
+DO $$ BEGIN
+  EXECUTE pg_catalog.format('REVOKE goji_shadow_gateway FROM %I', current_user);
+END $$;
 COMMIT;
