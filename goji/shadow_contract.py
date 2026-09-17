@@ -12,13 +12,16 @@ from .models import ResolvedOutcome, ValidationState
 
 
 def _parse_frozen_time(value: Any) -> datetime | None:
-    if not isinstance(value, str):
+    if isinstance(value, datetime):
+        timestamp = value
+    elif isinstance(value, str):
+        try:
+            timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
         return None
-    try:
-        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return timestamp.astimezone(timezone.utc) if timestamp.tzinfo else None
-    except ValueError:
-        return None
+    return timestamp.astimezone(timezone.utc) if timestamp.tzinfo else None
 
 
 def _nonempty(value: Any) -> bool:
